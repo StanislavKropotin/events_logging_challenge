@@ -4,6 +4,8 @@ import structlog
 from django.db import transaction
 
 from core.base_model import Model
+from eventlog.models import OutboxEvent
+from users.models import User
 
 
 class UseCaseRequest(Model):
@@ -12,7 +14,7 @@ class UseCaseRequest(Model):
 
 class UseCaseResponse(Model):
     result: Any = None
-    error: str = ''
+    error: str = ""
 
 
 class UseCase(Protocol):
@@ -29,9 +31,21 @@ class UseCase(Protocol):
             queries in this method.
         """
         return {
-            'use_case': self.__class__.__name__,
+            "use_case": self.__class__.__name__,
         }
 
     @transaction.atomic()
     def _execute(self, request: UseCaseRequest) -> UseCaseResponse:
         raise NotImplementedError()
+
+
+class CreateUserUseCase(UseCase):
+    def _execute(self, request: UseCaseRequest) -> UseCaseResponse:
+        user = User.objects.create(username=request.username)
+
+        OutboxEvent.objects.create(
+            event_type="user_created",
+            event_data={"user_id": user.id, "username": user.username},
+        )
+
+        return UseCaseResponse(result={"user_id": user.id})
